@@ -31,16 +31,19 @@ class GitLabIntegrationConfig(BaseModel):
     project_id: str = Field(default_factory=lambda: os.getenv("CI_PROJECT_ID", ""))
     mr_iid: str = Field(default_factory=lambda: os.getenv("CI_MERGE_REQUEST_IID", ""))
 
-    # PLAN.md §7.1: a dedicated Project/Group Access Token is recommended
-    # over CI_JOB_TOKEN (whose scope for posting discussions is version-
-    # and instance-config-dependent — verify before relying on it for this
-    # deployment). Both are supported; PR_AF_GITLAB_TOKEN wins if set.
+    # PLAN.md §7.1: a dedicated Project/Group Access Token is required, not
+    # just recommended — confirmed against GitLab's own docs (CI/CD job token
+    # docs), CI_JOB_TOKEN only ever gets read (GET) access to the Notes API,
+    # never POST, so it cannot post discussions or notes under any GitLab
+    # version/config. The CI_JOB_TOKEN fallback below still has a legitimate
+    # use: it's sufficient for fetch_mr's read-only GET call when no dedicated
+    # token is configured. PR_AF_GITLAB_TOKEN wins if set.
     token: str = Field(
         default_factory=lambda: os.getenv("PR_AF_GITLAB_TOKEN") or os.getenv("CI_JOB_TOKEN", "")
     )
-    # "PRIVATE-TOKEN" for a PAT / Project / Group Access Token (the
-    # recommended path); override to "JOB-TOKEN" only after confirming
-    # CI_JOB_TOKEN has discussion-posting scope on the target instance.
+    # "PRIVATE-TOKEN" for a PAT / Project / Group Access Token — the only
+    # viable path for posting (see above). "JOB-TOKEN" is offered for
+    # completeness/read-only use, not as a posting alternative.
     token_header: str = Field(default_factory=lambda: os.getenv("PR_AF_GITLAB_TOKEN_HEADER", "PRIVATE-TOKEN"))
 
     min_severity: str = Field(default_factory=lambda: os.getenv("PR_AF_GITLAB_MIN_SEVERITY", "nitpick"))

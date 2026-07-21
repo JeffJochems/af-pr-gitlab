@@ -38,5 +38,6 @@ Steps are numbered sequentially, zero-padded to 3 digits (`001`, `002`, ... `010
 | Step | Summary |
 |---|---|
 | [001-gitlab-adapter-scaffold](steps/001-gitlab-adapter-scaffold/) | Initial plan for the GitLab adapter around `pr-af`, then its implementation: `GitLabClient`, schemas, config, CI templates, docker-compose, tests. |
+| [002-dockerfile-claude-code-and-anthropic-routing](steps/002-dockerfile-claude-code-and-anthropic-routing/) | Fixes two bugs found via live research (real `agentfield` package + GitLab 17.7 docs): `claude-code` provider needs a dependency upstream's image doesn't install; `.ai()`'s OpenRouter hardcoding is fixed via a runtime override, not a source patch. Revises step 001's "zero Dockerfile" integration strategy. |
 
 Append a row here for every new step — this table is the fast way to find which folder covers what, without opening each one.

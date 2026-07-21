@@ -147,6 +147,13 @@ class GitLabClient:
         path, sourced from ``ReviewResult.metadata``'s changed-files list
         (``ChangedFile.previous_path``) — ``GitHubComment`` itself carries
         no rename information.
+
+        KNOWN LIMITATION (confirmed against GitLab's Discussions API docs):
+        a comment on a genuinely *unchanged* context line should set both
+        ``old_line`` and ``new_line`` together — this always sets exactly
+        one, mirroring GitHub's simpler LEFT/RIGHT model. ``pr-af`` findings
+        essentially never target unchanged lines (reviewers comment on
+        changed logic), so this is a documented gap, not a redesign.
         """
         if not comment.path or comment.line <= 0:
             return None

@@ -1,9 +1,13 @@
 # Reuses pr-af's own docker-compose.yml service definitions near-verbatim
 # (same two services, same env-var names for the AgentField/provider knobs).
-# The one structural change: the `pr-af` service's build context points at
-# the pinned upstream commit via BuildKit's remote git build context, so no
-# copy of pr-af's source ever lives in this repo (PLAN.md §3). Keep this ref
-# in sync with pyproject.toml's `pr-af @ git+...` pin.
+# The `pr-af` service now builds from this repo's own ./Dockerfile rather than
+# a pure remote build context — see .claude/steps/002-dockerfile-claude-code-
+# -and-anthropic-routing/PLAN.md for why (claude-code needs
+# agentfield[harness-claude], which upstream's own Dockerfile doesn't
+# install; PLAN.md §3's original "zero Dockerfile" strategy is revised there,
+# not silently overwritten here). Keep the pinned commit SHA (Dockerfile's
+# PR_AF_PINNED_REF build arg) in sync with pyproject.toml's `pr-af @ git+...`
+# pin.
 services:
   agentfield:
     image: agentfield/control-plane:latest
@@ -20,7 +24,7 @@ services:
 
   pr-af:
     build:
-      context: https://github.com/Agent-Field/pr-af.git#6b82efc8ade7cd48420ecd6de59eeb1cb80d3b49
+      context: .
       dockerfile: Dockerfile
     ports:
       - "8004:8004"
@@ -28,13 +32,17 @@ services:
       - AGENTFIELD_SERVER=http://agentfield:8080
       - AGENTFIELD_API_KEY=${AGENTFIELD_API_KEY:-}
       - AGENT_CALLBACK_URL=http://pr-af:8004
-      # Anthropic-direct wiring for .harness() calls (planner/reviewer/cross_ref/
-      # adversary) — see PLAN.md §6. The .ai() gate calls (polish/merge-gate) are
-      # NOT covered by this and remain hardcoded to OpenRouter in pr-af's own
-      # app.py; PLAN.md §7.2/§12.7 is the open decision that governs whether
-      # OPENROUTER_API_KEY below is required or acceptable for this deployment.
+      # Anthropic-direct wiring. .harness() calls (planner/reviewer/cross_ref/
+      # adversary) use PR_AF_PROVIDER/PR_AF_MODEL directly (see PLAN.md §6).
+      # .ai() calls (polish/merge-gate) go through docker/entrypoint_wrapper.py's
+      # runtime override, which takes effect whenever ANTHROPIC_API_KEY is set —
+      # falling back to pr-af's original OpenRouter behavior otherwise. Note
+      # PR_AF_MODEL and PR_AF_AI_MODEL are deliberately different: claude_agent_sdk
+      # (.harness()) wants a bare model id, litellm (.ai()) wants the "anthropic/"
+      # prefix to route correctly.
       - PR_AF_PROVIDER=${PR_AF_PROVIDER:-claude-code}
       - PR_AF_MODEL=${PR_AF_MODEL:-claude-sonnet-4-5}
+      - PR_AF_AI_MODEL=${PR_AF_AI_MODEL:-anthropic/claude-sonnet-4-5}
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
       - OPENROUTER_API_KEY=${OPENROUTER_API_KEY:-}
       - XDG_DATA_HOME=/home/praf/.local/share
