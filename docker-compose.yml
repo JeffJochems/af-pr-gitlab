@@ -1,0 +1,59 @@
+# Reuses pr-af's own docker-compose.yml service definitions near-verbatim
+# (same two services, same env-var names for the AgentField/provider knobs).
+# The one structural change: the `pr-af` service's build context points at
+# the pinned upstream commit via BuildKit's remote git build context, so no
+# copy of pr-af's source ever lives in this repo (PLAN.md §3). Keep this ref
+# in sync with pyproject.toml's `pr-af @ git+...` pin.
+services:
+  agentfield:
+    image: agentfield/control-plane:latest
+    pull_policy: always
+    ports:
+      - "8080:8080"
+    environment:
+      - AF_MODE=dev
+      - AGENTFIELD_HTTP_ADDR=0.0.0.0:8080
+      - AGENTFIELD_STORAGE_MODE=local
+    volumes:
+      - agentfield-data:/data
+    restart: unless-stopped
+
+  pr-af:
+    build:
+      context: https://github.com/Agent-Field/pr-af.git#6b82efc8ade7cd48420ecd6de59eeb1cb80d3b49
+      dockerfile: Dockerfile
+    ports:
+      - "8004:8004"
+    environment:
+      - AGENTFIELD_SERVER=http://agentfield:8080
+      - AGENTFIELD_API_KEY=${AGENTFIELD_API_KEY:-}
+      - AGENT_CALLBACK_URL=http://pr-af:8004
+      # Anthropic-direct wiring for .harness() calls (planner/reviewer/cross_ref/
+      # adversary) — see PLAN.md §6. The .ai() gate calls (polish/merge-gate) are
+      # NOT covered by this and remain hardcoded to OpenRouter in pr-af's own
+      # app.py; PLAN.md §7.2/§12.7 is the open decision that governs whether
+      # OPENROUTER_API_KEY below is required or acceptable for this deployment.
+      - PR_AF_PROVIDER=${PR_AF_PROVIDER:-claude-code}
+      - PR_AF_MODEL=${PR_AF_MODEL:-claude-sonnet-4-5}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+      - OPENROUTER_API_KEY=${OPENROUTER_API_KEY:-}
+      - XDG_DATA_HOME=/home/praf/.local/share
+      - PR_AF_WORKDIR=/workspaces
+    volumes:
+      - pr-af-workspaces:/workspaces
+      - opencode-data:/home/praf/.local/share
+    depends_on:
+      agentfield:
+        condition: service_started
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8004/health"]
+      interval: 60s
+      timeout: 30s
+      retries: 5
+      start_period: 30s
+    restart: unless-stopped
+
+volumes:
+  agentfield-data:
+  pr-af-workspaces:
+  opencode-data:

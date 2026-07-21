@@ -1,0 +1,36 @@
+# Lints, tests, and build-sanity-checks THIS repo's own code. Mirrors the
+# purpose of pr-af's own .github/workflows/ci.yml exactly: this repo does
+# not review its own merge requests — see templates/pr-af-review.gitlab-ci.yml
+# for the job that reviews OTHER projects, and PLAN.md §1/§8 for why the two
+# are deliberately separate.
+
+stages:
+  - lint
+  - test
+  - build
+
+lint:
+  stage: lint
+  image: python:3.11-slim
+  script:
+    - pip install --no-cache-dir --no-deps -e ".[dev]" || pip install --no-cache-dir ruff
+    - ruff check src/ scripts/ tests/
+
+test:
+  stage: test
+  image: python:3.11-slim
+  before_script:
+    - apt-get update -qq && apt-get install -y --no-install-recommends git ca-certificates >/dev/null
+    - pip install --no-cache-dir -e ".[dev]"
+  script:
+    - pytest tests/ -v
+
+docker-compose-config:
+  # Validates the compose file parses and merges cleanly. NOT a full image
+  # build like upstream's own docker-build job — our pr-af service has no
+  # local Dockerfile to build (its build context is the pinned remote
+  # pr-af repo, see docker-compose.yml), so there's nothing to build here.
+  stage: build
+  image: docker:24-cli
+  script:
+    - docker compose config >/dev/null

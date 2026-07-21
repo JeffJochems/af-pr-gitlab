@@ -1,0 +1,58 @@
+# Review-trigger job for pr-af-gitlab.
+#
+# This file runs in the project being REVIEWED, not in pr-af-gitlab itself
+# (PLAN.md §1/§8) — mirroring how pr-af's own README tells GitHub adopters
+# to add a workflow file to their own repo rather than pr-af reviewing
+# itself. Add it to your project either via a pinned `include:` (preferred
+# — see README "Recommended: `include:`") or by copying this job into your
+# own `.gitlab-ci.yml` (see README "Fallback: copy-paste").
+#
+# Requires (see README "Setup"):
+#   - "Pipelines for merge requests" enabled on this project.
+#   - A `pr-af` label applied to the merge request you want reviewed.
+#   - CI/CD variables (masked + protected): ANTHROPIC_API_KEY,
+#     PR_AF_GITLAB_TOKEN (a Project/Group Access Token — see PLAN.md §7.1),
+#     and, until PLAN.md §7.2/§12.7 is resolved, OPENROUTER_API_KEY.
+#   - A `review` stage in this project's `stages:` list (or override `stage:`
+#     below via `extends`/a local job re-declaration).
+
+pr-af-review:
+  stage: review
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event" && $CI_MERGE_REQUEST_LABELS =~ /pr-af/'
+  image: docker:24-cli
+  services:
+    - docker:24-dind
+  variables:
+    DOCKER_HOST: tcp://docker:2376
+    DOCKER_TLS_CERTDIR: "/certs"
+    DOCKER_TLS_VERIFY: 1
+    DOCKER_CERT_PATH: "/certs/client"
+    # Talking to the dind SERVICE, not "localhost" — a GitLab dind-networking
+    # gotcha: ports published by `docker compose up` are bound on the dind
+    # daemon's own network namespace, reachable from the job container at
+    # the `docker` service alias, never at `localhost` (PLAN.md implementation
+    # note added during scaffolding — this file is the reference for it).
+    AGENTFIELD_SERVER: "http://docker:8080"
+    PR_AF_GITLAB_REPO: "https://gitlab.com/<group>/pr-af-gitlab.git"
+    PR_AF_GITLAB_REF: "main" # pin to a released tag in production — see README
+    PR_AF_CONTAINER_REPO_PATH: "/workspaces/ci-checkout"
+    PR_AF_DEPTH: "auto"
+    PR_AF_PROVIDER: "claude-code"
+    PR_AF_MODEL: "claude-sonnet-4-5"
+  before_script:
+    - apk add --no-cache python3 py3-pip git curl
+    - git clone --depth 1 --branch "$PR_AF_GITLAB_REF" "$PR_AF_GITLAB_REPO" pr-af-gitlab-src
+    - python3 -m venv /tmp/venv
+    - . /tmp/venv/bin/activate
+    - pip install --no-cache-dir ./pr-af-gitlab-src
+  script:
+    - . /tmp/venv/bin/activate
+    - cd pr-af-gitlab-src
+    - docker compose up -d
+    - chmod +x scripts/wait_for_health.sh
+    - ./scripts/wait_for_health.sh "http://docker:8004/health"
+    - docker compose cp "$CI_PROJECT_DIR" "pr-af:${PR_AF_CONTAINER_REPO_PATH}"
+    - python3 scripts/ci_runner.py
+  after_script:
+    - cd pr-af-gitlab-src 2>/dev/null && docker compose down || true
